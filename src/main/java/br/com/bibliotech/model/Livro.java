@@ -20,19 +20,19 @@ public class Livro {
     private String codigoLivro;
 
     @Column(nullable = false)
-    private int exemplaresDisponiveis;
+    private int copiasDisponiveis;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "categoria_id")
     private Categoria categoria;
 
-    protected Livro() { }
+    public Livro() { }
 
-    public Livro(String titulo, String autor, String codigoLivro, int exemplaresDisponiveis, Categoria categoria) {
+    public Livro(String titulo, String autor, String codigoLivro, int copiasDisponiveis, Categoria categoria) {
         this.titulo = titulo;
         this.autor = autor;
         this.codigoLivro = codigoLivro;
-        this.exemplaresDisponiveis = exemplaresDisponiveis;
+        this.copiasDisponiveis = copiasDisponiveis;
         this.categoria = categoria;
     }
 
@@ -68,12 +68,12 @@ public class Livro {
         this.codigoLivro = codigoLivro;
     }
 
-    public int getExemplaresDisponiveis() {
-        return exemplaresDisponiveis;
+    public int getCopiasDisponiveis() {
+        return copiasDisponiveis;
     }
 
-    public void setExemplaresDisponiveis(int exemplaresDisponiveis) {
-        this.exemplaresDisponiveis = exemplaresDisponiveis;
+    public void setCopiasDisponiveis(int copiasDisponiveis) {
+        this.copiasDisponiveis = copiasDisponiveis;
     }
 
     public Categoria getCategoria() {
@@ -83,6 +83,4 @@ public class Livro {
     public void setCategoria(Categoria categoria) {
         this.categoria = categoria;
     }
-
-    
 }
