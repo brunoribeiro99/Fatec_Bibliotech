@@ -22,6 +22,23 @@ public class Carrinho {
 
     private LocalDateTime dataCriacao = LocalDateTime.now();
 
+    @Column(name = "codigo_tipo_usuario", length = 20)
+private String codigoTipoUsuario;
+
+public String getCodigoTipoUsuario() { return codigoTipoUsuario; }
+public void setCodigoTipoUsuario(String codigoTipoUsuario) { this.codigoTipoUsuario = codigoTipoUsuario; }
+
+@Column(name = "estrategia_prazo", length = 20)
+private String estrategiaPrazo;
+
+public String getEstrategiaPrazo() {
+    return estrategiaPrazo;
+}
+
+public void setEstrategiaPrazo(String estrategiaPrazo) {
+    this.estrategiaPrazo = estrategiaPrazo;
+}
+
     protected Carrinho() { }
 
     public Carrinho(Aluno aluno) {

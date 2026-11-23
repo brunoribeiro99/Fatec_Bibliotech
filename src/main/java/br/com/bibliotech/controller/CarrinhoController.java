@@ -40,4 +40,21 @@ public class CarrinhoController {
                                        @PathVariable Long itemId) {
         return carrinhoService.removerLivro(alunoId, itemId);
     }
+
+    @PostMapping("/tipo-usuario")
+    public CarrinhoResponseDTO aplicarTipoUsuario(@RequestParam Long alunoId,
+                                                  @RequestParam String codigo) {
+        return carrinhoService.aplicarTipoUsuario(alunoId, codigo);
+    }
+
+    @DeleteMapping("/tipo-usuario")
+    public CarrinhoResponseDTO removerTipoUsuario(@RequestParam Long alunoId) {
+        return carrinhoService.removerTipoUsuario(alunoId);
+    }
+
+    @PostMapping("/prazo")
+    public CarrinhoResponseDTO definirPrazo(@RequestParam Long alunoId,
+                                            @RequestParam String tipo) {
+        return carrinhoService.definirEstrategiaPrazo(alunoId, tipo);
+    }
 }

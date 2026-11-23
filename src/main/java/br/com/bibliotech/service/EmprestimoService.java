@@ -1,13 +1,17 @@
 package br.com.bibliotech.service;
 
+import br.com.bibliotech.config.ConfiguracoesBiblioTech;
 import br.com.bibliotech.dto.*;
 import br.com.bibliotech.exception.RegraDeNegocioException;
 import br.com.bibliotech.exception.ResourceNotFoundException;
+import br.com.bibliotech.factory.TipoUsuarioFactory;
 import br.com.bibliotech.model.*;
 import br.com.bibliotech.repository.*;
+import br.com.bibliotech.strategy.CalculadoraPrazo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -16,13 +20,27 @@ public class EmprestimoService {
     private final EmprestimoRepository emprestimoRepository;
     private final CarrinhoRepository carrinhoRepository;
     private final CursoRepository cursoRepository;
+    private final ConfiguracoesBiblioTech configuracoes;
+    private final TipoUsuarioFactory tipoUsuarioFactory;
+    private final CalculadoraPrazo calculadoraPrazo;
 
     public EmprestimoService(EmprestimoRepository emprestimoRepository,
                              CarrinhoRepository carrinhoRepository,
-                             CursoRepository cursoRepository) {
+                             CursoRepository cursoRepository,
+                             ConfiguracoesBiblioTech configuracoes,
+                             TipoUsuarioFactory tipoUsuarioFactory,
+                             CalculadoraPrazo calculadoraPrazo) {
         this.emprestimoRepository = emprestimoRepository;
         this.carrinhoRepository = carrinhoRepository;
         this.cursoRepository = cursoRepository;
+        this.configuracoes = configuracoes;
+        this.tipoUsuarioFactory = tipoUsuarioFactory;
+        this.calculadoraPrazo = calculadoraPrazo;
+    }
+
+    // Diagnóstico didático (Aula 10 - Singleton)
+    public long identityHashCodeConfiguracoes() {
+        return System.identityHashCode(configuracoes);
     }
 
     @Transactional
@@ -36,33 +54,51 @@ public class EmprestimoService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Curso não encontrado: " + dto.cursoId()));
 
+        int prazoDias = configuracoes.getPrazoPadraoDias();
+        int limiteLivros = configuracoes.getLimitePadraoLivros();
+
+        if (carrinho.getCodigoTipoUsuario() != null) {
+            var tipoUsuario = tipoUsuarioFactory.criar(carrinho.getCodigoTipoUsuario());
+            prazoDias = tipoUsuario.calcularPrazoDias(prazoDias);
+            limiteLivros = tipoUsuario.calcularLimiteLivros(limiteLivros);
+        }
+
+        String estrategia = carrinho.getEstrategiaPrazo() == null ? "PADRAO" : carrinho.getEstrategiaPrazo();
+        prazoDias = calculadoraPrazo.calcular(estrategia, prazoDias); // Strategy em ação
+
         var emprestimo = new Emprestimo();
         emprestimo.setAluno(carrinho.getAluno());
         emprestimo.setCurso(curso);
         emprestimo.setStatus(Status.EMPRESTADO);
+        emprestimo.setDataPrevistaDevolucao(LocalDate.now().plusDays(prazoDias));
 
         int totalLivros = 0;
         for (var item : carrinho.getItens()) {
             var livro = item.getLivro();
 
-            // R1: validação crítica no fechamento do empréstimo
             if (livro.getCopiasDisponiveis() < item.getQuantidade()) {
                 throw new RegraDeNegocioException("Cópias insuficientes para " + livro.getTitulo());
             }
-            livro.setCopiasDisponiveis(livro.getCopiasDisponiveis() - item.getQuantidade()); // baixa no acervo
+            livro.setCopiasDisponiveis(livro.getCopiasDisponiveis() - item.getQuantidade());
 
-            // SNAPSHOT: congela o título do livro no momento do empréstimo
             var livroEmprestado = new LivroEmprestado(emprestimo, livro, item.getQuantidade());
             emprestimo.getItens().add(livroEmprestado);
             totalLivros += item.getQuantidade();
         }
 
+        if (totalLivros > limiteLivros) {
+            throw new RegraDeNegocioException(
+                    "Limite de " + limiteLivros + " livros por empréstimo excedido");
+        }
+
         emprestimo.setTotalLivros(totalLivros);
 
         emprestimoRepository.save(emprestimo);
-        emprestimo.setNumero(String.format("BT-%04d", emprestimo.getId())); // dirty checking persiste
+        emprestimo.setNumero(String.format("BT-%04d", emprestimo.getId()));
 
-        carrinho.getItens().clear(); // zera o carrinho após concluir o empréstimo
+        carrinho.getItens().clear();
+        carrinho.setCodigoTipoUsuario(null); // tipo de usuário não sobrevive ao empréstimo
+        carrinho.setEstrategiaPrazo(null);   // estratégia não sobrevive ao empréstimo
         return paraResponse(emprestimo);
     }
 
@@ -77,7 +113,6 @@ public class EmprestimoService {
                 .stream().map(this::paraResponse).toList();
     }
 
-    // Devolução: encerra o empréstimo e repõe as cópias no acervo
     @Transactional
     public EmprestimoResponseDTO devolver(Long alunoId, Long emprestimoId) {
         var emprestimo = buscarEmprestimo(alunoId, emprestimoId);
@@ -91,7 +126,6 @@ public class EmprestimoService {
         return paraResponse(emprestimo);
     }
 
-    // R4: cancelamento só com status EMPRESTADO — e devolve as cópias ao acervo
     @Transactional
     public EmprestimoResponseDTO cancelar(Long alunoId, Long emprestimoId) {
         var emprestimo = buscarEmprestimo(alunoId, emprestimoId);

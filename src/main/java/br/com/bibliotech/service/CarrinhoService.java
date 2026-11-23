@@ -1,10 +1,13 @@
 package br.com.bibliotech.service;
 
+import br.com.bibliotech.config.ConfiguracoesBiblioTech;
 import br.com.bibliotech.dto.*;
 import br.com.bibliotech.exception.RegraDeNegocioException;
 import br.com.bibliotech.exception.ResourceNotFoundException;
+import br.com.bibliotech.factory.TipoUsuarioFactory;
 import br.com.bibliotech.model.*;
 import br.com.bibliotech.repository.*;
+import br.com.bibliotech.strategy.CalculadoraPrazo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,13 +17,22 @@ public class CarrinhoService {
     private final CarrinhoRepository carrinhoRepository;
     private final LivroRepository livroRepository;
     private final AlunoRepository alunoRepository;
+    private final TipoUsuarioFactory tipoUsuarioFactory;
+    private final ConfiguracoesBiblioTech configuracoes;
+    private final CalculadoraPrazo calculadoraPrazo;
 
     public CarrinhoService(CarrinhoRepository carrinhoRepository,
                            LivroRepository livroRepository,
-                           AlunoRepository alunoRepository) {
+                           AlunoRepository alunoRepository,
+                           TipoUsuarioFactory tipoUsuarioFactory,
+                           ConfiguracoesBiblioTech configuracoes,
+                           CalculadoraPrazo calculadoraPrazo) {
         this.carrinhoRepository = carrinhoRepository;
         this.livroRepository = livroRepository;
         this.alunoRepository = alunoRepository;
+        this.tipoUsuarioFactory = tipoUsuarioFactory;
+        this.configuracoes = configuracoes;
+        this.calculadoraPrazo = calculadoraPrazo;
     }
 
     @Transactional
@@ -75,6 +87,31 @@ public class CarrinhoService {
         return paraResponse(carrinho);
     }
 
+    @Transactional
+    public CarrinhoResponseDTO aplicarTipoUsuario(Long alunoId, String codigo) {
+        var carrinho = buscarOuCriar(alunoId);
+        var tipoUsuario = tipoUsuarioFactory.criar(codigo); // 404 se inválido
+        carrinho.setCodigoTipoUsuario(tipoUsuario.getCodigo());
+        return paraResponse(carrinho);
+    }
+
+    @Transactional
+    public CarrinhoResponseDTO removerTipoUsuario(Long alunoId) {
+        var carrinho = buscarOuCriar(alunoId);
+        carrinho.setCodigoTipoUsuario(null);
+        return paraResponse(carrinho);
+    }
+
+    @Transactional
+    public CarrinhoResponseDTO definirEstrategiaPrazo(Long alunoId, String tipo) {
+        if (!calculadoraPrazo.existe(tipo)) {
+            throw new ResourceNotFoundException("Estratégia de prazo inválida: " + tipo);
+        }
+        var carrinho = buscarOuCriar(alunoId);
+        carrinho.setEstrategiaPrazo(tipo.toUpperCase());
+        return paraResponse(carrinho);
+    }
+
     // R1: quantidade nunca excede as cópias disponíveis
     private void setQuantidade(ItemCarrinho item, int quantidade) {
         if (quantidade > item.getLivro().getCopiasDisponiveis()) {
@@ -108,6 +145,27 @@ public class CarrinhoService {
                 .mapToInt(ItemCarrinho::getQuantidade)
                 .sum();
 
-        return new CarrinhoResponseDTO(c.getId(), itens, totalLivros);
+        int prazoDias = configuracoes.getPrazoPadraoDias();
+        int limiteLivros = configuracoes.getLimitePadraoLivros();
+        String tipoUsuarioAplicado = null;
+
+        if (c.getCodigoTipoUsuario() != null) {
+            var tipoUsuario = tipoUsuarioFactory.criar(c.getCodigoTipoUsuario());
+            prazoDias = tipoUsuario.calcularPrazoDias(prazoDias);
+            limiteLivros = tipoUsuario.calcularLimiteLivros(limiteLivros);
+            tipoUsuarioAplicado = tipoUsuario.getCodigo();
+        }
+
+        String estrategia = c.getEstrategiaPrazo() == null ? "PADRAO" : c.getEstrategiaPrazo();
+        prazoDias = calculadoraPrazo.calcular(estrategia, prazoDias); // Strategy em ação
+
+        return new CarrinhoResponseDTO(
+                c.getId(),
+                itens,
+                tipoUsuarioAplicado,
+                estrategia,
+                prazoDias,
+                limiteLivros,
+                totalLivros);
     }
 }

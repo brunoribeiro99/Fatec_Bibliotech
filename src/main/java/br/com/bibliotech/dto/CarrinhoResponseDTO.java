@@ -5,6 +5,12 @@ import java.util.List;
 public record CarrinhoResponseDTO(
         Long id,
         List<LivroResponseDTO> itens,
-        int totalLivros) { 
-            
-        }
+        String tipoUsuario,
+        String estrategiaPrazo,
+        int prazoDias,
+        int limiteLivros,
+        int totalLivros
+) { 
+
+        
+}
